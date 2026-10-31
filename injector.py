@@ -1,7 +1,7 @@
-﻿"""
+"""
 Text Injector
-Kullanıcının o sırada seçili/odaklanmış olduğu herhangi bir Windows penceresine
-(Notepad, Tarayıcı, Discord, Word, Terminal vb.) tanınan metni anında yapıştırır.
+Injects transcribed text directly into any focused Windows application
+(Notepad, Browser, Discord, Word, Terminal, VS Code, etc.).
 """
 
 import ctypes
@@ -21,18 +21,18 @@ class TextInjector:
         pass
 
     def get_current_window(self) -> int:
-        """Kullanıcının şu anda odaklanmış olduğu pencerenin HWND tutamacını alır."""
+        """Returns the HWND handle of the currently focused foreground window."""
         return user32.GetForegroundWindow()
 
     def paste_text(self, text: str, target_hwnd: Optional[int] = None) -> bool:
         """
-        Verilen metni panoya kopyalar, hedef pencereye odaklanır ve Ctrl+V basarak yapıştırır.
-        Eski pano içeriğini yedekleyip kısa süre sonra geri yükler.
+        Copies text to clipboard, activates target window, and simulates Ctrl+V paste.
+        Restores previous clipboard content seamlessly in the background.
         """
         if not text:
             return False
 
-        # 1. Eski pano içeriğini yedekle
+        # 1. Backup existing clipboard content
         old_clipboard = None
         try:
             win32clipboard.OpenClipboard()
@@ -42,22 +42,22 @@ class TextInjector:
         except Exception:
             pass
 
-        # 2. Yeni metni panoya yaz
+        # 2. Write recognized text to clipboard
         try:
             win32clipboard.OpenClipboard()
             win32clipboard.EmptyClipboard()
             win32clipboard.SetClipboardText(text, win32con.CF_UNICODETEXT)
             win32clipboard.CloseClipboard()
         except Exception as e:
-            print(f"[Injector] Panoya yazma hatası: {e}")
+            print(f"[Injector] Clipboard write error: {e}")
             return False
 
-        # 3. Hedef pencereye odaklan
+        # 3. Focus target window
         if target_hwnd:
             user32.SetForegroundWindow(target_hwnd)
             time.sleep(0.06)
 
-        # 4. Ctrl + V simüle et
+        # 4. Simulate Ctrl + V
         user32.keybd_event(VK_CONTROL, 0, 0, 0)
         time.sleep(0.02)
         user32.keybd_event(VK_V, 0, 0, 0)
@@ -65,7 +65,7 @@ class TextInjector:
         user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
         user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
 
-        # 5. Eski panoyu arka planda geri yükle (opsiyonel)
+        # 5. Restore previous clipboard content after short delay
         def restore_clipboard():
             time.sleep(0.5)
             if old_clipboard is not None:

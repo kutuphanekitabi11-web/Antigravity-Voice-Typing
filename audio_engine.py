@@ -1,8 +1,7 @@
-﻿"""
+"""
 Audio Engine
-Mikrofondan 16000Hz, 16-bit Mono PCM formatında ses kaydeder ve
-Antigravity ses tanıma servisine uygun 40ms bloklar (640 örnek) üretir.
-Aynı zamanda arayüz için anlık ses seviyesi (RMS) hesaplar.
+Captures 16000Hz, 16-bit Mono PCM audio from the microphone
+in 40ms blocks (640 samples) and computes real-time RMS audio levels.
 """
 
 import sounddevice as sd
@@ -12,8 +11,8 @@ from typing import Callable, Optional
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-CHUNK_DURATION_MS = 40  # 40ms dilimler
-BLOCK_SIZE = int(SAMPLE_RATE * (CHUNK_DURATION_MS / 1000.0))  # 640 örnek
+CHUNK_DURATION_MS = 40  # 40ms audio chunks
+BLOCK_SIZE = int(SAMPLE_RATE * (CHUNK_DURATION_MS / 1000.0))  # 640 samples
 
 class AudioEngine:
     def __init__(self):
@@ -44,11 +43,9 @@ class AudioEngine:
                     self.on_chunk(pcm_bytes)
 
                 if self.on_level:
-                    # RMS ses seviyesi hesaplama (0.0 - 1.0 arası normalize)
-                    # indata int16 formatında (-32768 .. 32767)
+                    # Calculate RMS audio level (normalized 0.0 - 1.0)
                     samples = indata.astype(np.float32) / 32768.0
                     rms = np.sqrt(np.mean(samples ** 2))
-                    # Normal konuşma için logaritmik veya scaled seviye
                     level = min(1.0, float(rms * 5.0))
                     self.on_level(level)
 
@@ -64,7 +61,7 @@ class AudioEngine:
                 self.is_recording = True
                 return True
             except Exception as e:
-                print(f"[AudioEngine] Mikrofon başlatma hatası: {e}")
+                print(f"[AudioEngine] Microphone initialization error: {e}")
                 self.stream = None
                 self.is_recording = False
                 return False

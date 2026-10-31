@@ -1,7 +1,7 @@
-﻿"""
+"""
 Antigravity Voice Bridge
-Reverse engineered from Google Antigravity desktop IDE language_server.exe
-Protobuf Service: exa.language_server_pb.LanguageServerService
+Connects to local Antigravity Language Server audio transcription endpoints.
+Service: exa.language_server_pb.LanguageServerService
 Methods:
   - StreamAudioTranscription (ConnectRPC streaming)
   - SendAudioChunk (ConnectRPC unary)
@@ -36,10 +36,9 @@ class AntigravityBridge:
         self.sequence_number = 0
 
     def discover(self, force=False) -> Tuple[Optional[int], Optional[str]]:
-        """Antigravity language_server.exe prosesini, portunu ve CSRF tokenini dinamik bulur."""
+        """Dynamically finds the local language_server.exe process, listening port, and CSRF token."""
         now = time.time()
         if not force and self.port and self.csrf_token and (now - self.last_discovery_time < 30):
-            # Portun hala açık olup olmadığını hızlıca kontrol et
             if self._verify_port(self.port, self.csrf_token):
                 return self.port, self.csrf_token
 
@@ -91,11 +90,11 @@ class AntigravityBridge:
         on_complete: Optional[Callable[[], None]] = None,
         on_error: Optional[Callable[[Exception], None]] = None
     ) -> bool:
-        """Yeni bir ses tanıma oturumu başlatır ve ConnectRPC akışını açar."""
+        """Starts a new voice transcription session and opens the ConnectRPC stream."""
         port, csrf = self.discover(force=True)
         if not port or not csrf:
             if on_error:
-                on_error(RuntimeError("Antigravity Language Server bulunamadı! Lütfen Antigravity'nin açık olduğundan emin olun."))
+                on_error(RuntimeError("Antigravity Language Server not detected! Please ensure Antigravity is running."))
             return False
 
         try:
@@ -122,10 +121,10 @@ class AntigravityBridge:
 
             self.stream_resp = urllib.request.urlopen(stream_req, context=self.ssl_ctx)
 
-            # İlk mesajı oku (AudioStreamReady -> sessionId)
+            # Read first envelope message (AudioStreamReady -> sessionId)
             header = self.stream_resp.read(5)
             if len(header) < 5:
-                raise RuntimeError("ConnectRPC başlık okunamadı")
+                raise RuntimeError("Failed to read ConnectRPC header")
 
             flag, length = struct.unpack('>BI', header)
             first_msg = json.loads(self.stream_resp.read(length).decode('utf-8'))
@@ -133,7 +132,7 @@ class AntigravityBridge:
             session_id = ready_info.get('sessionId')
 
             if not session_id:
-                raise RuntimeError(f"Oturum ID alınamadı: {first_msg}")
+                raise RuntimeError(f"Session ID missing in response: {first_msg}")
 
             self.active_session_id = session_id
             self.sequence_number = 0
@@ -142,7 +141,7 @@ class AntigravityBridge:
             if on_ready:
                 on_ready(session_id)
 
-            # Arka plan akış dinleyici
+            # Background stream reader
             def reader_loop():
                 try:
                     while self.stream_running:
@@ -180,7 +179,7 @@ class AntigravityBridge:
             return False
 
     def send_audio_chunk(self, pcm16_bytes: bytes) -> bool:
-        """16000Hz 16-bit PCM ses bloğunu Antigravity'ye gönderir."""
+        """Sends a 16000Hz 16-bit PCM audio chunk to the server."""
         if not self.stream_running or not self.active_session_id:
             return False
 
@@ -214,7 +213,7 @@ class AntigravityBridge:
             return False
 
     def end_session(self) -> bool:
-        """Ses akışını tamamlar ve sonucu bekler."""
+        """Ends the audio session and yields final transcription."""
         if not self.active_session_id:
             return False
 

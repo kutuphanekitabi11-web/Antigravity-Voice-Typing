@@ -1,7 +1,7 @@
-﻿"""
-Fallback Voice Engine
-Antigravity kapalı olduğunda veya Antigravity yüklü olmayan herhangi bir bilgisayarda
-ücretsiz, API anahtarsız ve evrensel ses tanıma motoru sağlar.
+"""
+Universal Fallback Voice Engine
+Provides free, API-keyless, standalone speech recognition when
+Antigravity is inactive or on systems without Antigravity installed.
 """
 
 import speech_recognition as sr
@@ -12,17 +12,17 @@ class FallbackEngine:
         self.recognizer = sr.Recognizer()
 
     def transcribe_pcm(self, pcm16_bytes: bytes, sample_rate: int = 16000) -> Optional[str]:
-        """Ham 16-bit Mono PCM ses verisini Türkçe metne dönüştürür."""
+        """Converts raw 16-bit Mono PCM audio bytes to text."""
         if not pcm16_bytes:
             return None
 
         try:
             audio_data = sr.AudioData(pcm16_bytes, sample_rate, 2)
-            # Google Web Speech API (Ücretsiz, API key istemez, yüksek Türkçe doğruluğu)
+            # Google Web Speech API (Free, zero API key required, high accuracy)
             text = self.recognizer.recognize_google(audio_data, language="tr-TR")
             return text
         except sr.UnknownValueError:
             return ""
         except Exception as e:
-            print(f"[FallbackEngine] Tanıma hatası: {e}")
+            print(f"[FallbackEngine] Recognition error: {e}")
             return None

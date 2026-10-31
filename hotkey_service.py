@@ -1,7 +1,7 @@
-﻿"""
+"""
 Global Hotkey Service
-keyboard ve pynput kütüphanelerini birlikte kullanarak tüm Windows ortamında
-herhangi bir pencerede Alt + V kısayolunu anında ve güvenilir şekilde yakalar.
+Uses low-level keyboard hooks and pynput listeners to capture
+Alt + V and Ctrl + Shift + V globally across all Windows applications.
 """
 
 import time
@@ -11,7 +11,7 @@ class HotkeyService:
     def __init__(self, callback: Callable[[], None]):
         self.callback = callback
         self.last_trigger_time = 0.0
-        self.debounce_sec = 0.35  # Çift tetiklemeyi önleme
+        self.debounce_sec = 0.35  # Prevent accidental double-trigger
         self.is_running = False
         self.pynput_listener = None
 
@@ -23,7 +23,7 @@ class HotkeyService:
         try:
             self.callback()
         except Exception as e:
-            print(f"[Hotkey] Callback çalıştırma hatası: {e}")
+            print(f"[Hotkey] Callback error: {e}")
 
     def start(self):
         if self.is_running:
@@ -31,16 +31,16 @@ class HotkeyService:
         self.is_running = True
 
         registered = False
-        # 1. Öncelik: keyboard kütüphanesi (düşük seviye Windows klavye kancası)
+        # Priority 1: keyboard library hook
         try:
             import keyboard
             keyboard.add_hotkey('alt+v', self._on_hotkey, suppress=False)
-            print("[Hotkey] 'keyboard' ile Alt + V başarıyla bağlandı.")
+            print("[Hotkey] 'keyboard' Alt + V hook registered successfully.")
             registered = True
         except Exception as e:
-            print(f"[Hotkey] 'keyboard' başlatılamadı ({e}), pynput deneniyor...")
+            print(f"[Hotkey] 'keyboard' hook failed ({e}), falling back to pynput...")
 
-        # 2. Öncelik / Yedek: pynput kütüphanesi
+        # Priority 2: pynput global hotkey listener
         try:
             import pynput.keyboard as pkb
             self.pynput_listener = pkb.GlobalHotKeys({
@@ -48,13 +48,13 @@ class HotkeyService:
                 '<alt>+V': self._on_hotkey
             })
             self.pynput_listener.start()
-            print("[Hotkey] 'pynput' ile Alt + V dinleyici aktif.")
+            print("[Hotkey] 'pynput' Alt + V listener active.")
             registered = True
         except Exception as e:
-            print(f"[Hotkey] 'pynput' başlatılamadı: {e}")
+            print(f"[Hotkey] 'pynput' init failed: {e}")
 
         if not registered:
-            print("[Hotkey] UYARI: Hiçbir kısayol motoru başlatılamadı!")
+            print("[Hotkey] WARNING: No hotkey backend could be initialized!")
 
     def stop(self):
         self.is_running = False

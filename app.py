@@ -1,8 +1,9 @@
-﻿"""
+"""
 Antigravity Global Voice Typing (Hybrid Engine)
-Antigravity açıksa doğrudan yerel Language Server motorunu kullanır.
-Antigravity kapalıysa veya yüklü değilse evrensel yedek motorla (SpeechRecognition) çalışır.
-İndiren herkes her Windows bilgisayarda tek tıkla kullanabilir!
+High-performance voice typing utility for Windows.
+- Connects directly to the local Antigravity Language Server engine when available.
+- Automatically falls back to universal speech recognition when Antigravity is not active.
+- Global Hotkey: Alt + V (or Ctrl + Shift + V).
 """
 
 import sys
@@ -27,7 +28,7 @@ def log(msg: str):
     except Exception:
         pass
 
-log("Uygulama başlatılıyor (Hibrit Motor)...")
+log("Starting Voice Typing application (Hybrid Engine)...")
 
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
@@ -51,19 +52,19 @@ class VoiceTypingApp:
         self.overlay = OverlayWidget(hotkey_callback=self.on_hotkey_pressed)
 
         self.is_recording = False
-        self.active_mode = "antigravity" # "antigravity" veya "fallback"
+        self.active_mode = "antigravity" # "antigravity" or "fallback"
         self.recorded_pcm_chunks: List[bytes] = []
         self.target_hwnd: Optional[int] = None
         self.accumulated_text = ""
         self.final_text_event = threading.Event()
 
-        # Sistem Tepsisi
+        # System Tray Icon & Menu
         self.tray = QSystemTrayIcon(self._create_tray_icon(), self.qapp)
         self.tray.setToolTip("Antigravity Global Voice Typing (Alt + V)")
         self.tray.activated.connect(self._on_tray_activated)
 
         tray_menu = QMenu()
-        toggle_action = QAction("🎙️ Kayıt Başlat / Durdur (Alt + V)", tray_menu)
+        toggle_action = QAction("🎙️ Toggle Voice Typing (Alt + V)", tray_menu)
         toggle_action.triggered.connect(self.on_hotkey_pressed)
         font = toggle_action.font()
         font.setBold(True)
@@ -71,23 +72,23 @@ class VoiceTypingApp:
         tray_menu.addAction(toggle_action)
 
         tray_menu.addSeparator()
-        self.status_action = QAction("Durum: Kontrol ediliyor...", tray_menu)
+        self.status_action = QAction("Status: Checking...", tray_menu)
         self.status_action.setEnabled(False)
         tray_menu.addAction(self.status_action)
 
-        hotkey_info = QAction("Kısayol: Alt + V  (veya Ctrl + Shift + V)", tray_menu)
+        hotkey_info = QAction("Hotkey: Alt + V  (or Ctrl + Shift + V)", tray_menu)
         hotkey_info.setEnabled(False)
         tray_menu.addAction(hotkey_info)
 
         tray_menu.addSeparator()
-        quit_action = QAction("Çıkış", tray_menu)
+        quit_action = QAction("Exit", tray_menu)
         quit_action.triggered.connect(self.quit)
         tray_menu.addAction(quit_action)
 
         self.tray.setContextMenu(tray_menu)
         self.tray.show()
 
-        # Global Hotkey Kancası
+        # Global Hotkey Hook Fallback
         self.hotkey_fallback = HotkeyService(callback=self.on_hotkey_pressed)
         self.hotkey_fallback.start()
 
@@ -96,14 +97,14 @@ class VoiceTypingApp:
         self.check_timer.start(5000)
         self.check_bridge_status()
 
-        QTimer.singleShot(500, self._show_welcome_balloon)
+        QTimer.singleShot(600, self._show_welcome_balloon)
 
     def _show_welcome_balloon(self):
         port, _ = self.bridge.discover()
-        mode_text = f"Antigravity Motoru (Port {port})" if port else "Evrensel Bağımsız Motor"
+        mode_text = f"Antigravity Engine (Port {port})" if port else "Universal Speech Recognition"
         self.tray.showMessage(
-            "🎙️ Sesle Yazma Hazır",
-            f"Mod: {mode_text}\nYazmak istediğiniz yere tıklayıp Alt + V tuşuna basın.",
+            "🎙️ Voice Typing Ready",
+            f"Engine: {mode_text}\nClick into any text field and press Alt + V to type.",
             QSystemTrayIcon.Information,
             2500
         )
@@ -114,6 +115,7 @@ class VoiceTypingApp:
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         
+        # Red glowing badge
         painter.setBrush(QColor(239, 68, 68))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(2, 2, 28, 28)
@@ -133,15 +135,15 @@ class VoiceTypingApp:
     def check_bridge_status(self):
         port, _ = self.bridge.discover()
         if port:
-            self.status_action.setText(f"Motor: Antigravity Bağlı (Port {port})")
+            self.status_action.setText(f"Engine: Antigravity Connected (Port {port})")
         else:
-            self.status_action.setText("Motor: Evrensel Bağımsız Mod")
+            self.status_action.setText("Engine: Universal Speech Recognition")
 
     def on_hotkey_pressed(self):
-        log(f"on_hotkey_pressed tetiklendi! is_recording={self.is_recording}")
+        log(f"Hotkey triggered! is_recording={self.is_recording}")
         if not self.is_recording:
             self.target_hwnd = self.injector.get_current_window()
-            log(f"Hedef pencere HWND: {self.target_hwnd}")
+            log(f"Target window HWND: {self.target_hwnd}")
             self.start_recording()
         else:
             self.stop_recording_and_paste()
@@ -155,12 +157,12 @@ class VoiceTypingApp:
         port, csrf = self.bridge.discover()
         if port:
             self.active_mode = "antigravity"
-            log(f"Antigravity modu aktif (Port: {port}).")
+            log(f"Antigravity mode active (Port: {port}).")
             self.overlay.sig_show_state.emit('recording', "")
 
             def on_transcription(text: str, is_final: bool):
                 if text:
-                    log(f"Transkripsiyon: '{text}' (final: {is_final})")
+                    log(f"Transcription: '{text}' (final: {is_final})")
                     if is_final:
                         if not text.endswith(" "):
                             text += " "
@@ -170,12 +172,12 @@ class VoiceTypingApp:
                         self.overlay.sig_update_text.emit(self.accumulated_text + text, False)
 
             def on_complete():
-                log("Oturum akışı tamamlandı.")
+                log("Audio session stream finished.")
                 self.final_text_event.set()
 
             def on_error(err):
-                log(f"Ses akışı hatası: {err}")
-                self.overlay.sig_show_state.emit('error', f"Hata: {err}")
+                log(f"Audio stream error: {err}")
+                self.overlay.sig_show_state.emit('error', f"Error: {err}")
 
             success = self.bridge.start_session(
                 on_transcription=on_transcription,
@@ -183,11 +185,11 @@ class VoiceTypingApp:
                 on_error=on_error
             )
             if not success:
-                log("Bridge başlatılamadı, yedek motora geçiliyor.")
+                log("Bridge connection failed, falling back to universal engine.")
                 self.active_mode = "fallback"
         else:
             self.active_mode = "fallback"
-            log("Antigravity kapalı/yok; Evrensel Yedek Motor devrede.")
+            log("Antigravity offline/not detected; Universal Engine active.")
             self.overlay.sig_show_state.emit('recording', "")
 
         def on_audio_chunk(pcm_bytes):
@@ -200,11 +202,11 @@ class VoiceTypingApp:
             self.overlay.sig_update_level.emit(level)
 
         self.audio.start(on_chunk=on_audio_chunk, on_level=on_audio_level)
-        log(f"Mikrofon kaydı başladı (Mod: {self.active_mode}).")
+        log(f"Microphone recording started (Mode: {self.active_mode}).")
 
     def stop_recording_and_paste(self):
         self.is_recording = False
-        log(f"Ses kaydı durduruluyor (Mod: {self.active_mode})...")
+        log(f"Stopping recording (Mode: {self.active_mode})...")
 
         self.audio.stop()
 
@@ -213,22 +215,22 @@ class VoiceTypingApp:
             self.final_text_event.wait(timeout=1.2)
             result_text = self.accumulated_text.strip()
         else:
-            # Fallback Motoru Çözümlemesi
-            self.overlay.sig_update_text.emit("Ses metne dönüştürülüyor...", False)
+            # Fallback Engine Transcription
+            self.overlay.sig_update_text.emit("Transcribing audio...", False)
             all_pcm = b"".join(self.recorded_pcm_chunks)
             result_text = self.fallback.transcribe_pcm(all_pcm) or ""
             result_text = result_text.strip()
 
-        log(f"Nihai metin: '{result_text}'")
+        log(f"Final recognized text: '{result_text}'")
         self.overlay.sig_show_state.emit('pasting', result_text)
 
         if result_text:
             time.sleep(0.06)
             self.injector.paste_text(result_text, target_hwnd=self.target_hwnd)
-            log("Metin hedef pencereye yapıştırıldı.")
+            log("Text successfully pasted into target window.")
 
     def quit(self):
-        log("Uygulama kapatılıyor...")
+        log("Exiting application...")
         self.hotkey_fallback.stop()
         self.audio.stop()
         self.bridge.end_session()
@@ -239,5 +241,5 @@ if __name__ == '__main__':
     app.setQuitOnLastWindowClosed(False)
 
     vt_app = VoiceTypingApp(app)
-    log("VoiceTypingApp döngüsü başladı.")
+    log("VoiceTypingApp event loop running.")
     sys.exit(app.exec_())

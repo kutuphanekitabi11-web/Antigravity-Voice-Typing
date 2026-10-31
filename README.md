@@ -1,60 +1,107 @@
-﻿# Antigravity Global Voice Typing 🎙️
+# Antigravity Global Voice Typing 🎙️
 
-Bu proje, bilgisayarınızda açık olan **Google Antigravity** masaüstü uygulamasının prompt girdi alanındaki mikrofon (ses kaydı / dikte) özelliğinin **tersine mühendislik (Reverse Engineering)** ile çözümlenmesi ve tüm Windows işletim sisteminde `Alt + V` kısayoluyla çalışacak şekilde sistem geneline uyarlanmış halidir.
+A lightweight, system-wide AI voice dictation HUD utility for Windows. Dictate text with your voice anywhere on your computer using a global hotkey (`Alt + V` or `Ctrl + Shift + V`).
 
----
-
-## 🔍 Tersine Mühendislik (Reverse Engineering) Bulguları
-
-REA (Reverse Engineer Anything) ve CDP (Chrome DevTools Protocol) araçları kullanılarak Antigravity uygulamasının ses mimarisi adım adım çözümlendi:
-
-1. **Arka Plan Servisi (`language_server.exe`)**:
-   - Antigravity IDE, arka planda `C:\Users\eGe\AppData\Local\Programs\Antigravity\resources\bin\language_server.exe` servisini çalıştırır.
-   - Bu servis, dinamik bir yerel HTTPS portunda (`127.0.0.1:<port>`) bir **ConnectRPC** gRPC-web/HTTP sunucusu barındırır.
-   - Yetkilendirme için Electron başlatılırken üretilen `--csrf_token` kullanılır (`x-codeium-csrf-token` HTTP başlığı).
-
-2. **Protobuf & RPC Sözleşmesi (`language_server.proto`)**:
-   - **Paket / Servis**: `exa.language_server_pb.LanguageServerService`
-   - **Metotlar**:
-     - `StreamAudioTranscription(StartAudioTranscriptionRequest) returns (stream StreamAudioTranscriptionResponse)`
-       - ConnectRPC 5-byte envelope protokolü (`[0, len >> 24, ...]`) ile JSON mesaj akışı.
-       - Parametreler: `mimeType: "audio/pcm;rate=16000"`, `continuous: false`.
-       - Sunucu ilk mesajda `{"ready": {"sessionId": "..."}}` döndürür.
-       - Ardından gerçek zamanlı `{"transcription": {"text": "...", "isFinal": false/true}}` akışı sağlar.
-     - `SendAudioChunk(SendAudioChunkRequest) returns (SendAudioChunkResponse)`
-       - 16000Hz 16-bit Mono PCM ses dilimlerini base64 olarak sunucuya yollar (`sessionId`, `data`, `sequenceNumber`).
-     - `EndAudioSession(EndAudioSessionRequest) returns (EndAudioSessionResponse)`
-       - Konuşma bittiğinde oturumu sonlandırır ve nihai transkripsiyonu üretir.
-
-3. **Audio İşleme**:
-   - Mikrofon akışı 16000 Hz, 1 kanal, 16-bit signed PCM olarak 40ms'lik dilimler (640 örnek) halinde paketlenir.
+Whether you are writing code in **VS Code**, taking notes in **Obsidian**, drafting emails in **Chrome**, chatting in **Discord**, or typing in **Word** and **Notepad**, simply press the hotkey, speak naturally, and your speech is converted to text and automatically pasted into your active input cursor.
 
 ---
 
-## 🚀 Nasıl Çalışır?
+## ✨ Features
 
-1. **Her Yerde Çalışır**: Notepad, Word, Chrome, WhatsApp, Discord, Terminal, VS Code, Obsidian veya herhangi bir metin kutusuna tıklayın.
-2. **Kısayol (`Alt + V`)**:
-   - `Alt + V` tuşuna basın: Ekranın alt kısmında modern, yarı saydam bir dikte hapı belirir ve mikrofon dinlemeye başlar.
-   - Konuşun: Konuştuğunuz kelimeler gerçek zamanlı olarak arayüzde akar.
-   - Tekrar `Alt + V` tuşuna basın (veya susun): Kayıt tamamlanır, metin otomatik olarak imlecin bulunduğu yere **yapıştırılır**.
-3. **Sıfır Odak Kaybı**: Arayüz Windows üzerinde odağı (`focus`) asla çalmaz (`Qt.WindowDoesNotAcceptFocus`), böylece imleciniz hangi uygulamada ise tam oraya yazılır.
+- 🌍 **Universal Dictation Anywhere**: Works across all Windows applications. If you can click and type there, you can dictate there.
+- ⚡ **Dual Intelligence Engine (Hybrid Architecture)**:
+  - **Antigravity Engine**: Directly communicates with the local Antigravity Language Server engine for ultra-fast, accurate real-time speech transcription with zero cloud latency.
+  - **Universal Fallback Engine**: Seamlessly falls back to universal speech recognition (Google Web Speech API) when Antigravity is not active or on machines without Antigravity installed. Works out of the box with zero setup.
+- 💎 **Patterned Glassmorphic Floating HUD**:
+  - A modern, frameless floating pill overlay at the top of your screen with micro-dot grid texturing and ambient glowing mesh styling.
+  - Symmetrical 3-column layout guaranteeing 100% dead-center alignment for status cues and transcribed text.
+  - Live animated waveform visualizer reacting in real time to your voice volume.
+- 🎯 **Zero Focus Loss**:
+  - Configured with `Qt.WindowDoesNotAcceptFocus` and native Win32 window management.
+  - The floating overlay never steals focus from your active text field, keeping your typing cursor right where you left it.
+- 🎹 **Multi-Tier Global Hotkey System**:
+  - Global `Alt + V` (and alternate `Ctrl + Shift + V`) powered by native Win32 `RegisterHotKey` with low-level keyboard hook fallbacks.
+  - Audio chimes provide subtle auditory confirmation when dictation starts and when text is inserted.
+- 🖥️ **System Tray Integration**:
+  - Lives quietly in your Windows system tray.
+  - Displays engine connection status and enables one-click voice typing toggling directly from the tray icon.
 
 ---
 
-## 🛠️ Kurulum ve Başlatma
+## 🚀 How It Works
 
-### Gereksinimler:
-- Python 3.10+
-- Gerekli Python kütüphaneleri (otomatik yüklenmiştir):
-  ```bash
-  pip install sounddevice numpy PyQt5 psutil pywin32
-  ```
+1. **Focus Any Text Field**: Click into any text field (browser address bar, code editor, chat box, terminal, document, etc.).
+2. **Press `Alt + V`**:
+   - The sleek floating HUD pill appears at the top of your screen.
+   - The microphone activates with a soft audio cue and the live waveform animates to your speech.
+3. **Speak Naturally**:
+   - Your speech is transcribed in real-time as you talk.
+4. **Press `Alt + V` Again (or pause)**:
+   - Dictation finalizes, the overlay displays a centered confirmation badge, and the text is immediately pasted into your active cursor position.
 
-### Başlatma:
-- **Arka Planda Çalıştırma**: Proje klasöründeki `baslat.bat` dosyasına çift tıklayın. Görev çubuğunda (System Tray) mikrofon simgesi görünecektir.
-- **Konsollu (Hata Ayıklama) Çalıştırma**: `baslat_debug.bat` dosyasına çift tıklayın.
+---
 
-### Windows ile Otomatik Başlatma (İsteğe Bağlı):
-1. `Win + R` tuşlarına basıp `shell:startup` yazın ve Enter'a basın.
-2. `baslat.bat` dosyasının kısayolunu buraya kopyalayın. Bilgisayar her açıldığında otomatik olarak arka planda hazır olacaktır.
+## 📦 Installation & Setup
+
+### Prerequisites
+- Windows 10 or Windows 11 (64-bit)
+- Python 3.10+ installed
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/kutuphanekitabi11-web/Antigravity-Voice-Typing.git
+cd Antigravity-Voice-Typing
+```
+
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+*Required packages: `sounddevice`, `numpy`, `PyQt5`, `psutil`, `pywin32`, `SpeechRecognition`, `keyboard`, `pynput`.*
+
+---
+
+## 🏃 Launching the Application
+
+- **Background Silent Mode**: Double-click `baslat.bat`. The app starts silently with a tray icon in your taskbar.
+- **Console / Debug Mode**: Double-click `baslat_debug.bat` to see live engine logs and recognition diagnostics in a terminal.
+
+### Start Automatically with Windows (Optional)
+1. Press `Win + R`, type `shell:startup`, and press `Enter`.
+2. Right-click `baslat.bat` inside the project folder, select **Create shortcut**, and paste the shortcut into the Startup folder.
+3. Antigravity Voice Typing will now be ready in the background whenever your PC boots up.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Alt + V` | Primary toggle: Start recording / Stop recording & paste |
+| `Ctrl + Shift + V` | Secondary hotkey alternative |
+| Left-Click Tray Icon | Start / Stop dictation toggle |
+
+---
+
+## 🏗️ Project Architecture
+
+```
+Antigravity-Voice-Typing/
+├── app.py                 # Core application controller & system tray management
+├── overlay_widget.py      # Patterned glassmorphic HUD pill with audio visualizer
+├── antigravity_bridge.py  # Local streaming speech engine client (ConnectRPC)
+├── fallback_engine.py     # Universal speech recognition engine
+├── audio_engine.py        # 16kHz 16-bit Mono PCM audio capture & RMS level analyzer
+├── injector.py            # Win32 foreground window preservation & text injection
+├── hotkey_service.py      # Global hotkey listeners (RegisterHotKey + keyboard hooks)
+├── baslat.bat             # Silent background Windows launcher
+├── requirements.txt       # Python dependencies
+└── README.md              # Documentation
+```
+
+---
+
+## 📄 License
+
+MIT License. Free and open source for everyone.
