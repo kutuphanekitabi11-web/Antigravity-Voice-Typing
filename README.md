@@ -20,6 +20,18 @@ Whether you are writing code in **VS Code**, taking notes in **Obsidian**, draft
 
 ---
 
+## 🎯 The Motivation: Why Build This?
+
+Most speech-to-text and voice typing tools on Windows—including native solutions like `Win + H` and various third-party apps—often fall short. They frequently struggle with technical jargon, fumble punctuation, suffer from noticeable latency, or introduce clunky popups that interrupt your workflow.
+
+**Google Antigravity's speech-to-text engine, by contrast, is extraordinarily good.** It delivers blazing-fast streaming transcription, handles natural conversational pacing with high accuracy, and effortlessly understands technical terminology and code syntax without stuttering.
+
+**The Vision:** Why should such a superior voice recognition engine be confined solely to an IDE prompt box?
+
+This project liberates Antigravity's voice engine and makes it a universal superpower across the entire Windows operating system. With a single global shortcut (`Alt + V`), you get the speed and precision of Antigravity's transcription anywhere you can type.
+
+---
+
 ## 🚀 How It Works (Step-by-Step)
 
 ### **Step 1: Focus Any Text Field & Press `Alt + V`**
