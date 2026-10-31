@@ -61,7 +61,6 @@ class VisualizerWidget(QWidget):
             y = (h - bar_h) // 2
             x = start_x + i * (bar_width + spacing)
             
-            # Subtle red-to-rose glowing audio bar
             bar_grad = QLinearGradient(x, y, x, y + bar_h)
             bar_grad.setColorAt(0.0, QColor(248, 113, 113))
             bar_grad.setColorAt(1.0, QColor(225, 29, 72))
@@ -94,7 +93,7 @@ class PatternedPillContainer(QWidget):
 
         # 1. Base Obsidian Glass Background
         base_grad = QLinearGradient(0, 0, 0, h)
-        base_grad.setColorAt(0.0, QColor(15, 18, 28, 245))  # Deep midnight slate
+        base_grad.setColorAt(0.0, QColor(15, 18, 28, 245))
         base_grad.setColorAt(1.0, QColor(9, 11, 18, 250))
         painter.fillPath(path, base_grad)
 
@@ -104,8 +103,8 @@ class PatternedPillContainer(QWidget):
 
         # 2. Ambient Cyan/Indigo Radial Mesh Glow
         glow = QRadialGradient(w * 0.25, 0, w * 0.6)
-        glow.setColorAt(0.0, QColor(99, 102, 241, 32))  # Indigo core
-        glow.setColorAt(0.5, QColor(56, 189, 248, 16))  # Sky cyan flare
+        glow.setColorAt(0.0, QColor(99, 102, 241, 32))
+        glow.setColorAt(0.5, QColor(56, 189, 248, 16))
         glow.setColorAt(1.0, QColor(0, 0, 0, 0))
         painter.fillRect(rect, glow)
 
@@ -129,9 +128,9 @@ class PatternedPillContainer(QWidget):
 
         # 5. Frosted Glass Rim Highlight
         border_grad = QLinearGradient(0, 0, 0, h)
-        border_grad.setColorAt(0.0, QColor(255, 255, 255, 75))   # Crisp top highlight
+        border_grad.setColorAt(0.0, QColor(255, 255, 255, 75))
         border_grad.setColorAt(0.35, QColor(255, 255, 255, 30))
-        border_grad.setColorAt(1.0, QColor(255, 255, 255, 12))  # Soft bottom rim
+        border_grad.setColorAt(1.0, QColor(255, 255, 255, 12))
 
         border_pen = QPen(QBrush(border_grad), 1.2)
         painter.setPen(border_pen)
@@ -158,7 +157,6 @@ class OverlayWidget(QWidget):
         self.sig_show_state.connect(self._on_show_state)
 
     def init_ui(self):
-        # Window flags: Never steal focus, stay on top, frameless tool window
         self.setWindowFlags(
             Qt.WindowStaysOnTopHint |
             Qt.FramelessWindowHint |
@@ -175,7 +173,6 @@ class OverlayWidget(QWidget):
         self.container = PatternedPillContainer(self)
         self.container.setMinimumHeight(64)
 
-        # Ambient Drop Shadow for Elevation
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(36)
         shadow.setColor(QColor(0, 0, 0, 220))
@@ -183,7 +180,6 @@ class OverlayWidget(QWidget):
         self.container.setGraphicsEffect(shadow)
 
         # Symmetrical 3-Column Layout: Left (54px), Center (Flexible), Right (54px)
-        # This guarantees 100% mathematical center alignment for status and transcript!
         container_layout = QHBoxLayout(self.container)
         container_layout.setContentsMargins(12, 10, 12, 10)
         container_layout.setSpacing(8)
@@ -202,7 +198,7 @@ class OverlayWidget(QWidget):
         left_layout.addWidget(self.lbl_icon)
         container_layout.addWidget(self.left_box)
 
-        # 2. Center Text Box (Expanding, perfectly centered)
+        # 2. Center Text Box (Symmetrically centered)
         self.center_box = QWidget(self.container)
         self.center_box.setStyleSheet("background: transparent; border: none;")
         center_layout = QVBoxLayout(self.center_box)
@@ -245,11 +241,9 @@ class OverlayWidget(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setAlignment(Qt.AlignCenter)
 
-        # Visualizer in right box
         self.visualizer = VisualizerWidget(self.right_box)
         right_layout.addWidget(self.visualizer)
 
-        # Status indicator badge (shown when pasting or on completion)
         self.lbl_right_badge = QLabel("✓", self.right_box)
         self.lbl_right_badge.setAlignment(Qt.AlignCenter)
         self.lbl_right_badge.setStyleSheet("""
@@ -331,7 +325,8 @@ class OverlayWidget(QWidget):
             background: transparent;
             border: none;
         """)
-        disp_text = final_text if final_text else "(No speech detected)"
+        disp_text = final_text.strip() if final_text and final_text.strip() else "(No speech detected)"
+        # Cap display length for HUD pill aesthetics while full text is safely pasted
         if len(disp_text) > 85:
             disp_text = disp_text[:82] + "..."
         self.lbl_text.setText(disp_text)
@@ -363,7 +358,7 @@ class OverlayWidget(QWidget):
         except Exception:
             pass
 
-        self.fade_timer.start(1600)
+        self.fade_timer.start(1800)
 
     def show_error(self, message: str):
         self.lbl_icon.setText("⚠️")
@@ -396,7 +391,11 @@ class OverlayWidget(QWidget):
 
     def _on_update_text(self, text: str, is_final: bool):
         if text.strip():
-            self.lbl_text.setText(text)
+            display = text.strip()
+            # For long continuous dictation, show ellipsis and tail in HUD so pill maintains sleek proportions
+            if len(display) > 130:
+                display = "..." + display[-125:]
+            self.lbl_text.setText(display)
             self.lbl_text.setStyleSheet("""
                 color: #FFFFFF;
                 font-size: 14px;

@@ -55,7 +55,10 @@ class VoiceTypingApp:
         self.active_mode = "antigravity" # "antigravity" or "fallback"
         self.recorded_pcm_chunks: List[bytes] = []
         self.target_hwnd: Optional[int] = None
+        
+        # Real-time streaming accumulation buffers
         self.accumulated_text = ""
+        self.latest_interim_text = ""
         self.final_text_event = threading.Event()
 
         # System Tray Icon & Menu
@@ -115,7 +118,6 @@ class VoiceTypingApp:
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Red glowing badge
         painter.setBrush(QColor(239, 68, 68))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(2, 2, 28, 28)
@@ -151,6 +153,7 @@ class VoiceTypingApp:
     def start_recording(self):
         self.is_recording = True
         self.accumulated_text = ""
+        self.latest_interim_text = ""
         self.recorded_pcm_chunks = []
         self.final_text_event.clear()
 
@@ -167,9 +170,12 @@ class VoiceTypingApp:
                         if not text.endswith(" "):
                             text += " "
                         self.accumulated_text += text
-                        self.overlay.sig_update_text.emit(self.accumulated_text, True)
+                        self.latest_interim_text = ""
+                        self.overlay.sig_update_text.emit(self.accumulated_text.strip(), True)
                     else:
-                        self.overlay.sig_update_text.emit(self.accumulated_text + text, False)
+                        self.latest_interim_text = text
+                        display = (self.accumulated_text + " " + text).strip()
+                        self.overlay.sig_update_text.emit(display, False)
 
             def on_complete():
                 log("Audio session stream finished.")
@@ -193,10 +199,10 @@ class VoiceTypingApp:
             self.overlay.sig_show_state.emit('recording', "")
 
         def on_audio_chunk(pcm_bytes):
+            # Always buffer raw PCM audio as an emergency safety net
+            self.recorded_pcm_chunks.append(pcm_bytes)
             if self.active_mode == "antigravity":
                 self.bridge.send_audio_chunk(pcm_bytes)
-            else:
-                self.recorded_pcm_chunks.append(pcm_bytes)
 
         def on_audio_level(level):
             self.overlay.sig_update_level.emit(level)
@@ -209,25 +215,46 @@ class VoiceTypingApp:
         log(f"Stopping recording (Mode: {self.active_mode})...")
 
         self.audio.stop()
+        result_text = ""
 
         if self.active_mode == "antigravity":
             self.bridge.end_session()
-            self.final_text_event.wait(timeout=1.2)
-            result_text = self.accumulated_text.strip()
+            self.final_text_event.wait(timeout=0.6)
+
+            full_acc = self.accumulated_text.strip()
+            interim = self.latest_interim_text.strip()
+
+            # Ensure interim speech hypothesis is NEVER lost even if is_final was not sent
+            if interim:
+                if interim not in full_acc:
+                    result_text = f"{full_acc} {interim}".strip() if full_acc else interim
+                else:
+                    result_text = full_acc
+            else:
+                result_text = full_acc
+
+            # Emergency Safety Net:
+            # If server returned empty despite recording audio for > 1.5 seconds, use fallback!
+            if not result_text and len(self.recorded_pcm_chunks) > 15:
+                log("Antigravity text empty after audio input; running emergency fallback recognition...")
+                self.overlay.sig_update_text.emit("Processing audio...", False)
+                all_pcm = b"".join(self.recorded_pcm_chunks)
+                result_text = (self.fallback.transcribe_pcm(all_pcm) or "").strip()
         else:
-            # Fallback Engine Transcription
+            # Universal Fallback Mode
             self.overlay.sig_update_text.emit("Transcribing audio...", False)
             all_pcm = b"".join(self.recorded_pcm_chunks)
-            result_text = self.fallback.transcribe_pcm(all_pcm) or ""
-            result_text = result_text.strip()
+            result_text = (self.fallback.transcribe_pcm(all_pcm) or "").strip()
 
-        log(f"Final recognized text: '{result_text}'")
+        log(f"Final recognized text: '{result_text}' (character count: {len(result_text)})")
         self.overlay.sig_show_state.emit('pasting', result_text)
 
         if result_text:
             time.sleep(0.06)
             self.injector.paste_text(result_text, target_hwnd=self.target_hwnd)
             log("Text successfully pasted into target window.")
+        else:
+            log("No speech text available to paste.")
 
     def quit(self):
         log("Exiting application...")

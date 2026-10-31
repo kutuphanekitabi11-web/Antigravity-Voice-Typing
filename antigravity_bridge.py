@@ -4,7 +4,7 @@ Connects to local Antigravity Language Server audio transcription endpoints.
 Service: exa.language_server_pb.LanguageServerService
 Methods:
   - StreamAudioTranscription (ConnectRPC streaming)
-  - SendAudioChunk (ConnectRPC unary)
+  - SendAudioChunk (ConnectRPC unary with persistent keep-alive connection)
   - EndAudioSession (ConnectRPC unary)
 """
 
@@ -14,6 +14,7 @@ import ssl
 import json
 import struct
 import urllib.request
+import http.client
 import base64
 import time
 import threading
@@ -34,6 +35,7 @@ class AntigravityBridge:
         self.stream_running = False
         self.reader_thread: Optional[threading.Thread] = None
         self.sequence_number = 0
+        self.chunk_conn: Optional[http.client.HTTPSConnection] = None
 
     def discover(self, force=False) -> Tuple[Optional[int], Optional[str]]:
         """Dynamically finds the local language_server.exe process, listening port, and CSRF token."""
@@ -98,12 +100,13 @@ class AntigravityBridge:
             return False
 
         try:
+            # continuous: True ensures the engine does not prematurely close stream during long speech
             req_body = json.dumps({
                 "mimeType": "audio/pcm;rate=16000",
                 "preCursorText": "",
                 "postCursorText": "",
                 "cascadeId": "",
-                "continuous": False
+                "continuous": True
             }).encode('utf-8')
 
             # Connect-Protocol 5-byte envelope: [flag=0, length (4 bytes uint32 BE)]
@@ -137,6 +140,14 @@ class AntigravityBridge:
             self.active_session_id = session_id
             self.sequence_number = 0
             self.stream_running = True
+
+            # Initialize persistent HTTPS connection pool for chunks
+            try:
+                self.chunk_conn = http.client.HTTPSConnection(
+                    '127.0.0.1', port, context=self.ssl_ctx, timeout=2.5
+                )
+            except Exception:
+                self.chunk_conn = None
 
             if on_ready:
                 on_ready(session_id)
@@ -179,8 +190,8 @@ class AntigravityBridge:
             return False
 
     def send_audio_chunk(self, pcm16_bytes: bytes) -> bool:
-        """Sends a 16000Hz 16-bit PCM audio chunk to the server."""
-        if not self.stream_running or not self.active_session_id:
+        """Sends a 16000Hz 16-bit PCM audio chunk using persistent HTTP keep-alive connection."""
+        if not self.stream_running or not self.active_session_id or not self.port:
             return False
 
         port = self.port
@@ -194,32 +205,57 @@ class AntigravityBridge:
             "sessionId": session_id,
             "data": b64_data,
             "sequenceNumber": seq
-        }).encode('utf-8')
+        })
 
-        chunk_req = urllib.request.Request(
-            f'https://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/SendAudioChunk',
-            data=chunk_body,
-            headers={
-                'Content-Type': 'application/json',
-                'x-codeium-csrf-token': csrf,
-                'Connect-Protocol-Version': '1'
-            }
-        )
+        # Try sending through persistent connection first
+        for attempt in range(2):
+            try:
+                if self.chunk_conn is None:
+                    self.chunk_conn = http.client.HTTPSConnection(
+                        '127.0.0.1', port, context=self.ssl_ctx, timeout=2.5
+                    )
 
-        try:
-            with urllib.request.urlopen(chunk_req, context=self.ssl_ctx, timeout=0.8) as resp:
+                self.chunk_conn.request(
+                    'POST',
+                    '/exa.language_server_pb.LanguageServerService/SendAudioChunk',
+                    body=chunk_body,
+                    headers={
+                        'Content-Type': 'application/json',
+                        'x-codeium-csrf-token': csrf or '',
+                        'Connect-Protocol-Version': '1',
+                        'Connection': 'keep-alive'
+                    }
+                )
+                resp = self.chunk_conn.getresponse()
+                resp.read()  # Drain response body for connection reuse
                 return resp.status == 200
-        except Exception:
-            return False
+            except Exception:
+                # Reset connection on failure and retry once
+                try:
+                    if self.chunk_conn:
+                        self.chunk_conn.close()
+                except Exception:
+                    pass
+                self.chunk_conn = None
+
+        return False
 
     def end_session(self) -> bool:
-        """Ends the audio session and yields final transcription."""
-        if not self.active_session_id:
+        """Ends the audio session and flushes any pending transcription."""
+        if not self.active_session_id or not self.port:
             return False
 
         port = self.port
         csrf = self.csrf_token
         session_id = self.active_session_id
+
+        # Close persistent chunk connection
+        if self.chunk_conn:
+            try:
+                self.chunk_conn.close()
+            except Exception:
+                pass
+            self.chunk_conn = None
 
         end_body = json.dumps({"sessionId": session_id}).encode('utf-8')
         end_req = urllib.request.Request(
@@ -227,7 +263,7 @@ class AntigravityBridge:
             data=end_body,
             headers={
                 'Content-Type': 'application/json',
-                'x-codeium-csrf-token': csrf,
+                'x-codeium-csrf-token': csrf or '',
                 'Connect-Protocol-Version': '1'
             }
         )
