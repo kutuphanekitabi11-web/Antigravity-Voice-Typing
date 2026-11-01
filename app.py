@@ -8,6 +8,15 @@ High-performance voice typing utility for Windows.
 
 import sys
 import os
+import ctypes
+
+# Win32 Kernel Named Mutex: Guarantees strictly ONE instance system-wide
+_MUTEX_NAME = "Global\\AntigravityVoiceTyping_SingleInstance_Mutex"
+_ERROR_ALREADY_EXISTS = 183
+_single_instance_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+if ctypes.windll.kernel32.GetLastError() == _ERROR_ALREADY_EXISTS:
+    print("[SingleInstance] Another instance of Antigravity Voice Typing is already running. Exiting cleanly.")
+    sys.exit(0)
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:

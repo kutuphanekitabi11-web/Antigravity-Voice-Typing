@@ -6,9 +6,39 @@ Native Windows RegisterHotKey for global Alt + V and Ctrl + Shift + V.
 """
 
 import sys
+import os
+import threading
 import ctypes
 from ctypes import wintypes
 import winsound
+
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_START_WAV = os.path.join(_CURRENT_DIR, "assets", "start.wav")
+_STOP_WAV = os.path.join(_CURRENT_DIR, "assets", "stop.wav")
+
+def play_start_sound():
+    try:
+        if os.path.exists(_START_WAV):
+            winsound.PlaySound(_START_WAV, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        else:
+            threading.Thread(target=winsound.Beep, args=(1200, 70), daemon=True).start()
+    except Exception:
+        try:
+            threading.Thread(target=winsound.Beep, args=(1200, 70), daemon=True).start()
+        except Exception:
+            pass
+
+def play_stop_sound():
+    try:
+        if os.path.exists(_STOP_WAV):
+            winsound.PlaySound(_STOP_WAV, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        else:
+            threading.Thread(target=winsound.Beep, args=(900, 70), daemon=True).start()
+    except Exception:
+        try:
+            threading.Thread(target=winsound.Beep, args=(900, 70), daemon=True).start()
+        except Exception:
+            pass
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QHBoxLayout, QVBoxLayout, QGraphicsDropShadowEffect, QApplication
 )
@@ -309,10 +339,7 @@ class OverlayWidget(QWidget):
         self.show()
         self.raise_()
         
-        try:
-            winsound.Beep(1200, 70)
-        except Exception:
-            pass
+        play_start_sound()
 
     def show_pasting(self, final_text: str):
         self.lbl_icon.setText("✍️")
@@ -353,10 +380,7 @@ class OverlayWidget(QWidget):
         self.show()
         self.raise_()
 
-        try:
-            winsound.Beep(900, 70)
-        except Exception:
-            pass
+        play_stop_sound()
 
         self.fade_timer.start(1800)
 
