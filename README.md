@@ -113,15 +113,23 @@ pip install -r requirements.txt
 
 ---
 
-## 🏃 Launching the Application
+## 🏃 Launching & Process Management
 
-- **Background Silent Mode**: Double-click `baslat.bat`. The app starts silently with a tray icon in your taskbar.
-- **Console / Debug Mode**: Double-click `baslat_debug.bat` to see live engine logs and recognition diagnostics in a terminal.
+Antigravity Voice Typing comes with a complete suite of single-click process management and Windows startup automation scripts:
 
-### Start Automatically with Windows (Optional)
-1. Press `Win + R`, type `shell:startup`, and press `Enter`.
-2. Right-click `baslat.bat` inside the project folder, select **Create shortcut**, and paste the shortcut into the Startup folder.
-3. Antigravity Voice Typing will now be ready in the background whenever your PC boots up.
+| Script | Purpose |
+| --- | --- |
+| **`baslat.bat`** | Silent background launcher. Automatically detects if the application is already running to prevent duplicate processes. |
+| **`durdur.bat`** | Safely terminates running Voice Typing processes (`pythonw app.py`) and cleans up the PID lock file. |
+| **`durum.bat`** | Displays a real-time terminal diagnostic report (PID, RAM usage, Uptime, Antigravity Bridge connection port, Windows startup status, and app logs). |
+| **`kur_otomatik_baslat.bat`** | Installs a zero-window VBS launcher into the Windows Startup folder (`shell:startup`) for seamless boot integration. |
+| **`kaldir_otomatik_baslat.bat`** | Uninstalls and removes the startup launcher from Windows. |
+| **`baslat_debug.bat`** | Console / Debug launcher to inspect live engine logs and recognition diagnostics in real-time. |
+
+### Windows Startup Integration (One-Click)
+- To start Voice Typing automatically whenever your computer boots, run **`kur_otomatik_baslat.bat`**. It creates a windowless background launcher (`AntigravityVoiceTyping.vbs`) in your Windows Startup directory.
+- To disable startup, run **`kaldir_otomatik_baslat.bat`**.
+- To check current health and process metrics at any time, run **`durum.bat`**.
 
 ---
 
@@ -139,17 +147,25 @@ pip install -r requirements.txt
 
 ```
 Antigravity-Voice-Typing/
-├── assets/                # Step-by-step UI showcase screenshots & hero banners
-├── app.py                 # Core application controller & system tray management
-├── overlay_widget.py      # Patterned glassmorphic HUD pill with audio visualizer
-├── antigravity_bridge.py  # Local streaming speech engine client (ConnectRPC)
-├── fallback_engine.py     # Universal speech recognition engine
-├── audio_engine.py        # 16kHz 16-bit Mono PCM audio capture & RMS level analyzer
-├── injector.py            # Win32 foreground window preservation & text injection
-├── hotkey_service.py      # Global hotkey listeners (RegisterHotKey + keyboard hooks)
-├── baslat.bat             # Silent background Windows launcher
-├── requirements.txt       # Python dependencies
-└── README.md              # Documentation
+├── assets/                    # Step-by-step UI showcase screenshots & hero banners
+├── app.py                     # Core application controller & system tray management
+├── overlay_widget.py          # Patterned glassmorphic HUD pill with audio visualizer
+├── antigravity_bridge.py      # Local streaming speech engine client (ConnectRPC)
+├── fallback_engine.py         # Universal speech recognition engine
+├── audio_engine.py            # 16kHz 16-bit Mono PCM audio capture & RMS level analyzer
+├── injector.py                # Win32 foreground window preservation & text injection
+├── hotkey_service.py          # Global hotkey listeners (RegisterHotKey + keyboard hooks)
+├── baslat.bat                 # Silent background Windows launcher (prevents duplicates)
+├── baslat.ps1                 # Background process manager helper for launcher
+├── baslat_debug.bat           # Console mode launcher with live terminal logs
+├── durdur.bat                 # Process terminator script
+├── durdur.ps1                 # Clean process stopper & PID cleaner helper
+├── durum.bat                  # Diagnostic status report script
+├── durum.ps1                  # Terminal dashboard report generator
+├── kur_otomatik_baslat.bat    # Windows Startup installer (windowless VBS)
+├── kaldir_otomatik_baslat.bat # Windows Startup uninstaller
+├── requirements.txt           # Python dependencies
+└── README.md                  # Documentation
 ```
 
 ---

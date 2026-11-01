@@ -15,16 +15,59 @@ if current_dir not in sys.path:
 
 import time
 import threading
+import atexit
 from typing import Optional, List
 
+PID_FILE = os.path.join(current_dir, "app.pid")
+
+def write_pid_file():
+    try:
+        with open(PID_FILE, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        print(f"Failed to write PID file: {e}")
+
+def cleanup_pid_file():
+    try:
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+    except Exception:
+        pass
+
+write_pid_file()
+atexit.register(cleanup_pid_file)
+
+_log_write_count = 0
+_log_lock = threading.Lock()
+
 def log(msg: str):
+    global _log_write_count
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] {msg}"
     print(line)
     try:
-        log_path = os.path.join(current_dir, "app.log")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        with _log_lock:
+            log_path = os.path.join(current_dir, "app.log")
+            _log_write_count += 1
+            # Check file size periodically (every 20 writes) to maintain max 1MB with rotation
+            if _log_write_count % 20 == 1:
+                if os.path.exists(log_path) and os.path.getsize(log_path) > 1024 * 1024:
+                    old_path = os.path.join(current_dir, "app.log.old")
+                    try:
+                        os.replace(log_path, old_path)
+                    except Exception:
+                        # If replace is locked by another handle, keep the most recent 2000 lines
+                        try:
+                            with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                                lines = f.readlines()
+                            if len(lines) > 2000:
+                                with open(log_path, "w", encoding="utf-8") as f:
+                                    f.writelines(lines[-2000:])
+                        except Exception:
+                            pass
+
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
     except Exception:
         pass
 
@@ -97,7 +140,7 @@ class VoiceTypingApp:
 
         self.check_timer = QTimer()
         self.check_timer.timeout.connect(self.check_bridge_status)
-        self.check_timer.start(5000)
+        self.check_timer.start(10000)
         self.check_bridge_status()
 
         QTimer.singleShot(600, self._show_welcome_balloon)
@@ -217,47 +260,52 @@ class VoiceTypingApp:
         self.audio.stop()
         result_text = ""
 
-        if self.active_mode == "antigravity":
-            self.bridge.end_session()
-            self.final_text_event.wait(timeout=0.6)
+        try:
+            if self.active_mode == "antigravity":
+                self.bridge.end_session()
+                self.final_text_event.wait(timeout=0.6)
 
-            full_acc = self.accumulated_text.strip()
-            interim = self.latest_interim_text.strip()
+                full_acc = self.accumulated_text.strip()
+                interim = self.latest_interim_text.strip()
 
-            # Ensure interim speech hypothesis is NEVER lost even if is_final was not sent
-            if interim:
-                if interim not in full_acc:
-                    result_text = f"{full_acc} {interim}".strip() if full_acc else interim
+                # Ensure interim speech hypothesis is NEVER lost even if is_final was not sent
+                if interim:
+                    if interim not in full_acc:
+                        result_text = f"{full_acc} {interim}".strip() if full_acc else interim
+                    else:
+                        result_text = full_acc
                 else:
                     result_text = full_acc
-            else:
-                result_text = full_acc
 
-            # Emergency Safety Net:
-            # If server returned empty despite recording audio for > 1.5 seconds, use fallback!
-            if not result_text and len(self.recorded_pcm_chunks) > 15:
-                log("Antigravity text empty after audio input; running emergency fallback recognition...")
-                self.overlay.sig_update_text.emit("Processing audio...", False)
+                # Emergency Safety Net:
+                # If server returned empty despite recording audio for > 1.5 seconds, use fallback!
+                if not result_text and len(self.recorded_pcm_chunks) > 15:
+                    log("Antigravity text empty after audio input; running emergency fallback recognition...")
+                    self.overlay.sig_update_text.emit("Processing audio...", False)
+                    all_pcm = b"".join(self.recorded_pcm_chunks)
+                    result_text = (self.fallback.transcribe_pcm(all_pcm) or "").strip()
+            else:
+                # Universal Fallback Mode
+                self.overlay.sig_update_text.emit("Transcribing audio...", False)
                 all_pcm = b"".join(self.recorded_pcm_chunks)
                 result_text = (self.fallback.transcribe_pcm(all_pcm) or "").strip()
-        else:
-            # Universal Fallback Mode
-            self.overlay.sig_update_text.emit("Transcribing audio...", False)
-            all_pcm = b"".join(self.recorded_pcm_chunks)
-            result_text = (self.fallback.transcribe_pcm(all_pcm) or "").strip()
 
-        log(f"Final recognized text: '{result_text}' (character count: {len(result_text)})")
-        self.overlay.sig_show_state.emit('pasting', result_text)
+            log(f"Final recognized text: '{result_text}' (character count: {len(result_text)})")
+            self.overlay.sig_show_state.emit('pasting', result_text)
 
-        if result_text:
-            time.sleep(0.06)
-            self.injector.paste_text(result_text, target_hwnd=self.target_hwnd)
-            log("Text successfully pasted into target window.")
-        else:
-            log("No speech text available to paste.")
+            if result_text:
+                time.sleep(0.06)
+                self.injector.paste_text(result_text, target_hwnd=self.target_hwnd)
+                log("Text successfully pasted into target window.")
+            else:
+                log("No speech text available to paste.")
+        finally:
+            # Guarantee recorded PCM audio chunks are freed immediately from memory even on error
+            self.recorded_pcm_chunks.clear()
 
     def quit(self):
         log("Exiting application...")
+        cleanup_pid_file()
         self.hotkey_fallback.stop()
         self.audio.stop()
         self.bridge.end_session()

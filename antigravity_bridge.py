@@ -28,7 +28,8 @@ class AntigravityBridge:
 
         self.port: Optional[int] = None
         self.csrf_token: Optional[str] = None
-        self.last_discovery_time = 0
+        self.last_discovery_time = 0.0
+        self.last_process_scan_time = 0.0
 
         self.active_session_id: Optional[str] = None
         self.stream_resp = None
@@ -36,39 +37,59 @@ class AntigravityBridge:
         self.reader_thread: Optional[threading.Thread] = None
         self.sequence_number = 0
         self.chunk_conn: Optional[http.client.HTTPSConnection] = None
+        self._lock = threading.Lock()
 
     def discover(self, force=False) -> Tuple[Optional[int], Optional[str]]:
         """Dynamically finds the local language_server.exe process, listening port, and CSRF token."""
-        now = time.time()
-        if not force and self.port and self.csrf_token and (now - self.last_discovery_time < 30):
-            if self._verify_port(self.port, self.csrf_token):
-                return self.port, self.csrf_token
+        with self._lock:
+            now = time.time()
 
-        for p in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                name = p.info.get('name') or ''
-                if 'language_server' in name.lower():
-                    cmd = ' '.join(p.info.get('cmdline') or [])
-                    csrf_m = re.search(r'--csrf_token[=\s]+([^\s]+)', cmd)
-                    if not csrf_m:
-                        continue
-                    csrf = csrf_m.group(1)
+            # Fast path: If port and CSRF token are already known
+            if self.port and self.csrf_token:
+                # If not forced and verified within last 15 seconds, return immediately
+                if not force and (now - self.last_discovery_time < 15.0):
+                    return self.port, self.csrf_token
 
-                    ports = []
-                    for conn in p.net_connections(kind='tcp'):
-                        if conn.status == psutil.CONN_LISTEN and conn.laddr.ip in ('127.0.0.1', '0.0.0.0'):
-                            ports.append(conn.laddr.port)
+                # Ping active port to verify it is still alive (every 15-20s or when forced)
+                if self._verify_port(self.port, self.csrf_token):
+                    self.last_discovery_time = now
+                    return self.port, self.csrf_token
+                else:
+                    # Connection dropped / port no longer responding
+                    self.port = None
+                    self.csrf_token = None
 
-                    for port in ports:
-                        if self._verify_port(port, csrf):
-                            self.port = port
-                            self.csrf_token = csrf
-                            self.last_discovery_time = now
-                            return port, csrf
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+            # Rate-limit psutil process scanning when Antigravity is offline (10-15s interval)
+            if not force and (now - self.last_process_scan_time < 10.0):
+                return None, None
 
-        return None, None
+            self.last_process_scan_time = now
+
+            for p in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    name = p.info.get('name') or ''
+                    if 'language_server' in name.lower():
+                        cmd = ' '.join(p.info.get('cmdline') or [])
+                        csrf_m = re.search(r'--csrf_token[=\s]+([^\s]+)', cmd)
+                        if not csrf_m:
+                            continue
+                        csrf = csrf_m.group(1)
+
+                        ports = []
+                        for conn in p.net_connections(kind='tcp'):
+                            if conn.status == psutil.CONN_LISTEN and conn.laddr.ip in ('127.0.0.1', '0.0.0.0'):
+                                ports.append(conn.laddr.port)
+
+                        for port in ports:
+                            if self._verify_port(port, csrf):
+                                self.port = port
+                                self.csrf_token = csrf
+                                self.last_discovery_time = now
+                                return port, csrf
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, psutil.Error, OSError):
+                    pass
+
+            return None, None
 
     def _verify_port(self, port: int, csrf: str) -> bool:
         try:
