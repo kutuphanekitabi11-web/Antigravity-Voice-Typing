@@ -410,6 +410,42 @@ class OverlayWidget(QWidget):
         self.raise_()
         self.fade_timer.start(3500)
 
+    def show_ready(self, message: str = "Ready · Press Alt + V to type"):
+        self.fade_timer.stop()
+        self.lbl_icon.setText("🎙️")
+        self.lbl_status.setText("VOICE TYPING READY")
+        self.lbl_status.setStyleSheet("""
+            color: #34D399;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            background: transparent;
+            border: none;
+        """)
+        self.lbl_text.setText(message)
+        self.lbl_text.setStyleSheet("""
+            color: #F9FAFB;
+            font-size: 14px;
+            font-weight: 500;
+            background: transparent;
+            border: none;
+        """)
+        self.visualizer.setVisible(False)
+        self.lbl_right_badge.setText("✓")
+        self.lbl_right_badge.setStyleSheet("""
+            color: #34D399;
+            font-size: 18px;
+            font-weight: bold;
+            background: transparent;
+            border: none;
+        """)
+        self.lbl_right_badge.setVisible(True)
+        self.reposition()
+        self.setVisible(True)
+        self.show()
+        self.raise_()
+        self.fade_timer.start(2200)
+
     def hide_overlay(self):
         self.hide()
 

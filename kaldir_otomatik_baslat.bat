@@ -2,27 +2,22 @@
 setlocal EnableDelayedExpansion
 chcp 65001 >nul
 
-set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "TARGET_VBS=%STARTUP_DIR%\AntigravityVoiceTyping.vbs"
-
+cd /d "%~dp0"
 echo ========================================================
 echo   Antigravity Voice Typing - Otomatik Baslatma Kaldir
 echo ========================================================
 echo.
 
-if exist "%TARGET_VBS%" (
-    del /f /q "%TARGET_VBS%"
-    if not exist "%TARGET_VBS%" (
-        echo [BASARILI] Startup baslaticisi silindi:
-        echo   %TARGET_VBS%
-        echo Artik bilgisayar acilisinda otomatik baslamayacak.
-    ) else (
-        echo [HATA] Startup baslaticisi silinemedi! Dosya kilitli olabilir.
-        exit /b 1
-    )
+set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+set "VBS_FILE=%STARTUP_DIR%\AntigravityVoiceTyping.vbs"
+
+if exist "%VBS_FILE%" (
+    del /f /q "%VBS_FILE%"
+    echo [BASARILI] Otomatik baslatma kisayolu kaldirildi.
 ) else (
-    echo [BILGI] Startup klasorunde kurulu AntigravityVoiceTyping.vbs bulunamadi.
-    echo Zaten otomatik baslatma aktif degil.
+    echo [BILGI] Otomatik baslatma zaten kurulu degil.
 )
 
+echo.
+ping 127.0.0.1 -n 2 >nul
 exit /b 0

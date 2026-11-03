@@ -156,7 +156,13 @@ class AntigravityBridge:
             session_id = ready_info.get('sessionId')
 
             if not session_id:
-                raise RuntimeError(f"Session ID missing in response: {first_msg}")
+                err_info = first_msg.get('error', {})
+                err_msg = err_info.get('message', '')
+                if 'ResourceExhausted' in err_msg or 'exhausted your capacity' in err_msg:
+                    m = re.search(r'reset after\s+([0-9a-zA-Z]+)', err_msg)
+                    reset_time = m.group(1) if m else "kısa süre"
+                    raise RuntimeError(f"Antigravity kotası doldu ({reset_time} sonra açılacak)")
+                raise RuntimeError(f"Oturum açılamadı: {err_msg or first_msg}")
 
             self.active_session_id = session_id
             self.sequence_number = 0
@@ -182,8 +188,13 @@ class AntigravityBridge:
                             break
                         f, l = struct.unpack('>BI', h)
                         payload = self.stream_resp.read(l)
+                        if not payload:
+                            break
                         if f == 0:
-                            msg = json.loads(payload.decode('utf-8'))
+                            try:
+                                msg = json.loads(payload.decode('utf-8'))
+                            except Exception:
+                                break
                             if 'transcription' in msg:
                                 t_info = msg['transcription']
                                 text = t_info.get('text', '')

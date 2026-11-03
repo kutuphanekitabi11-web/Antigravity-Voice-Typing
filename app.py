@@ -10,11 +10,13 @@ import sys
 import os
 import ctypes
 
-# Win32 Kernel Named Mutex: Guarantees strictly ONE instance system-wide
-_MUTEX_NAME = "Global\\AntigravityVoiceTyping_SingleInstance_Mutex"
+# Win32 Kernel Named Mutex: Guarantees strictly ONE instance in current session
+_MUTEX_NAME = "Local\\AntigravityVoiceTyping_SingleInstance_Mutex"
 _ERROR_ALREADY_EXISTS = 183
+_ERROR_ACCESS_DENIED = 5
 _single_instance_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
-if ctypes.windll.kernel32.GetLastError() == _ERROR_ALREADY_EXISTS:
+_last_err = ctypes.windll.kernel32.GetLastError()
+if _last_err in (_ERROR_ALREADY_EXISTS, _ERROR_ACCESS_DENIED):
     print("[SingleInstance] Another instance of Antigravity Voice Typing is already running. Exiting cleanly.")
     sys.exit(0)
 
@@ -114,8 +116,10 @@ class VoiceTypingApp:
         self.final_text_event = threading.Event()
 
         # System Tray Icon & Menu
-        self.tray = QSystemTrayIcon(self._create_tray_icon(), self.qapp)
-        self.tray.setToolTip("Antigravity Global Voice Typing (Alt + V)")
+        app_icon = self._create_tray_icon()
+        self.qapp.setWindowIcon(app_icon)
+        self.tray = QSystemTrayIcon(app_icon)
+        self.tray.setToolTip("Antigravity Voice Typing (Alt + V)")
         self.tray.activated.connect(self._on_tray_activated)
 
         tray_menu = QMenu()
@@ -141,7 +145,9 @@ class VoiceTypingApp:
         tray_menu.addAction(quit_action)
 
         self.tray.setContextMenu(tray_menu)
+        self.tray.setVisible(True)
         self.tray.show()
+        log(f"System tray icon initialized. isVisible={self.tray.isVisible()}, isAvailable={QSystemTrayIcon.isSystemTrayAvailable()}")
 
         # Global Hotkey Hook Fallback
         self.hotkey_fallback = HotkeyService(callback=self.on_hotkey_pressed)
@@ -157,29 +163,42 @@ class VoiceTypingApp:
     def _show_welcome_balloon(self):
         port, _ = self.bridge.discover()
         mode_text = f"Antigravity Engine (Port {port})" if port else "Universal Speech Recognition"
+        try:
+            self.overlay.show_ready(f"{mode_text} · Alt + V")
+        except Exception:
+            pass
         self.tray.showMessage(
             "🎙️ Voice Typing Ready",
             f"Engine: {mode_text}\nClick into any text field and press Alt + V to type.",
             QSystemTrayIcon.Information,
-            2500
+            3000
         )
 
     def _create_tray_icon(self) -> QIcon:
+        ico_path = os.path.join(current_dir, "assets", "app_icon.ico")
+        if os.path.exists(ico_path):
+            icon = QIcon(ico_path)
+            if not icon.isNull():
+                return icon
+        png_path = os.path.join(current_dir, "assets", "app_icon.png")
+        if os.path.exists(png_path):
+            icon = QIcon(png_path)
+            if not icon.isNull():
+                return icon
+
         pixmap = QPixmap(32, 32)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        painter.setBrush(QColor(239, 68, 68))
+        painter.setBrush(QColor(225, 29, 72))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(2, 2, 28, 28)
-
+        painter.setBrush(QColor(255, 255, 255))
+        painter.drawRoundedRect(12, 7, 8, 14, 4, 4)
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Segoe UI Emoji", 14)
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "🎙")
+        painter.drawLine(16, 21, 16, 25)
+        painter.drawLine(12, 25, 20, 25)
         painter.end()
-
         return QIcon(pixmap)
 
     def _on_tray_activated(self, reason):
@@ -194,6 +213,13 @@ class VoiceTypingApp:
             self.status_action.setText("Engine: Universal Speech Recognition")
 
     def on_hotkey_pressed(self):
+        now = time.time()
+        # Debounce: Prevent double-trigger from multiple simultaneous hooks (RegisterHotKey + keyboard hook)
+        if hasattr(self, '_last_hotkey_time') and (now - self._last_hotkey_time < 0.40):
+            log(f"Ignoring duplicate hotkey bounce (delta: {now - self._last_hotkey_time:.3f}s)")
+            return
+        self._last_hotkey_time = now
+
         log(f"Hotkey triggered! is_recording={self.is_recording}")
         if not self.is_recording:
             self.target_hwnd = self.injector.get_current_window()
@@ -235,7 +261,11 @@ class VoiceTypingApp:
 
             def on_error(err):
                 log(f"Audio stream error: {err}")
-                self.overlay.sig_show_state.emit('error', f"Error: {err}")
+                err_str = str(err)
+                if "kota" in err_str.lower() or "quota" in err_str.lower() or "resourceexhausted" in err_str.lower():
+                    self.overlay.sig_show_state.emit('error', f"⚠️ {err_str} · Yedek motor devrede")
+                else:
+                    self.overlay.sig_show_state.emit('error', f"Hata: {err}")
 
             success = self.bridge.start_session(
                 on_transcription=on_transcription,
@@ -245,6 +275,8 @@ class VoiceTypingApp:
             if not success:
                 log("Bridge connection failed, falling back to universal engine.")
                 self.active_mode = "fallback"
+                # Transition smoothly to recording HUD so dictation continues uninterrupted
+                QTimer.singleShot(1400, lambda: self.overlay.sig_show_state.emit('recording', "") if self.is_recording else None)
         else:
             self.active_mode = "fallback"
             log("Antigravity offline/not detected; Universal Engine active.")
